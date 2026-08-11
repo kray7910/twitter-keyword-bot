@@ -1,0 +1,3 @@
+tweepy
+streamlit
+python-dotenv
