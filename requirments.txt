@@ -1,4 +1,6 @@
 tweepy
 time
+json
+feedparser
 streamlit
 python-dotenv
