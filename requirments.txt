@@ -1,3 +1,4 @@
 tweepy
+time
 streamlit
 python-dotenv
