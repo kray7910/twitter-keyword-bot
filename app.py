@@ -2,7 +2,7 @@ import os
 import feedparser
 import json
 import tweepy
-import streamlit as st
+import html
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -41,3 +41,7 @@ def save_posted_id(entry_id):
         #json files cant serialize set directly, so we convert it to list, indent is just
         #space between each entry
         json.dump(list(posted),f,indent=2)
+
+def clean_html_tags(text):
+    """Remove <b> tags that Google Alerts inserts into titles/summaries."""
+    return text.replace("<b>", "").replace("</b>", "").replace("&quot;", '"')
