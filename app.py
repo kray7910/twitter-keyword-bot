@@ -5,6 +5,7 @@ import tweepy
 import html
 from dotenv import load_dotenv
 
+
 load_dotenv()
 
 client = tweepy.Client(
@@ -42,6 +43,53 @@ def save_posted_id(entry_id):
         #space between each entry
         json.dump(list(posted),f,indent=2)
 
+'''The RSS feed generated highlights search terms inside titles using HTML tags like <b> and
+</b>, and converts special characters to html entities(&amp instead of just &), so we clean
+them'''
 def clean_html_tags(text):
-    """Remove <b> tags that Google Alerts inserts into titles/summaries."""
-    return text.replace("<b>", "").replace("</b>", "").replace("&quot;", '"')
+    # Unescape HTML entities (&quot; -> ", &amp; -> &, etc.)
+    cleaned = html.unescape(text)
+    # Strip out bold highlight tags
+    return cleaned.replace("<b>", "").replace("</b>", "")
+
+'''Function to get the relevant data from RSS feed and crosscheck it with our cache file,
+if the ids do not match, then clean the data from its html tags and post a tweet'''
+
+def check_and_tweet_concerts():
+    print("Fetching concert updates")
+    #Parses the XML data from RSS feed to python readable dictionaries and list format
+    feed = feedparser.parse(RSS_URL)
+
+    if not feed.entries:
+        print("No new updates found")
+        return
+
+    posted_ids = load_posted_ids()
+
+    for entry in feed.entries:
+        #Function to get some specific attribute, if the "id" section of our entry was empty
+        #then entry.link(article's web URL) is the fallback, rather than giving attribute error
+        entry_id = getattr(entry,"id",entry.link)
+        if entry_id in posted_ids:
+            continue
+
+        raw_title = entry.title
+        title = clean_html_tags(raw_title)
+        link = entry.link
+
+        tweet_text = f"CONCERT ALERT INDIA 🎟️\n\n{title}\n\n🔗 Details: {link}\n\n#ConcertsIndia #LiveMusic #TicketsIndia #LiveShow #Concert"
+        if len(tweet_text) > 280:
+            tweet_text = f"CONCERT ALERT INDIA 🎟️\n\n{title[:165]}\n\n🔗 Details: {link}\n\n#ConcertsIndia #LiveMusic #TicketsIndia #LiveShow #Concert"
+
+        print(f"\nPosting new concert alert:\n{tweet_text}")
+
+        try:
+            response = client.create_tweet(text = tweet_text)
+            print(f"Tweet posted, Tweet ID: {response.data['id']}")
+            save_posted_id(entry_id)
+        except tweepy.TweepyException as e:
+            print(f"Failed to tweet: {e}")
+            break
+
+if __name__ == "__main__":
+    check_and_tweet_concerts()
