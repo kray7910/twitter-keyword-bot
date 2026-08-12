@@ -1,6 +1,5 @@
 tweepy
-time
 json
 feedparser
-streamlit
+html
 python-dotenv
