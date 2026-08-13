@@ -58,7 +58,9 @@ if the ids do not match, then clean the data from its html tags and post a tweet
 
 def check_and_tweet_concerts():
     print("Fetching concert updates")
-
+    
+    #To spoof browser User-Agent header, istead of the regular feedparser User-Agent header
+    #which may get blocked by google for each request
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
