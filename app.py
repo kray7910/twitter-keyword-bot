@@ -19,7 +19,8 @@ client = tweepy.Client(
 )
 
 CACHE_FILE = "posted_cache.json"
-RSS_URL = "https://www.google.com/alerts/feeds/14870177641225663263/4783581204708488671"
+# Direct Google News RSS search for India concerts
+RSS_URL = "https://news.google.com/rss/search?q=concert+india+ticket&hl=en-IN&gl=IN&ceid=IN:en"
 
 '''To load previous tweet id's from local cache to prevent duplicates, after the script is run
 all the variables are erased from memmory and when run again, bot ends up fetching the same 
@@ -58,7 +59,7 @@ if the ids do not match, then clean the data from its html tags and post a tweet
 
 def check_and_tweet_concerts():
     print("Fetching concert updates")
-    
+
     #To spoof browser User-Agent header, istead of the regular feedparser User-Agent header
     #which may get blocked by google for each request
     headers = {
@@ -73,6 +74,7 @@ def check_and_tweet_concerts():
     except requests.RequestException as e:
         print(f"Failed to get RSS feed: {e}")
         return
+
 
     if getattr(feed, "bozo", 0) == 1:
         print("Feed parsing error")
