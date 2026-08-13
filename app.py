@@ -3,6 +3,7 @@ import feedparser
 import json
 import tweepy
 import html
+import requests
 from dotenv import load_dotenv
 
 
@@ -57,8 +58,22 @@ if the ids do not match, then clean the data from its html tags and post a tweet
 
 def check_and_tweet_concerts():
     print("Fetching concert updates")
-    #Parses the XML data from RSS feed to python readable dictionaries and list format
-    feed = feedparser.parse(RSS_URL)
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
+
+    try:
+        response = requests.get(RSS_URL, headers = headers, timeout=10)
+        response.raise_for_status()
+        #Parses the XML data from RSS feed to python readable dictionaries and list format
+        feed = feedparser.parse(RSS_URL)
+    except requests.RequestException as e:
+        print(f"Failed to get RSS feed: {e}")
+        return
+
+    if getattr(feed, "bozo", 0) == 1:
+        print("Feed parsing error")
 
     if not feed.entries:
         print("No new updates found")
@@ -79,13 +94,13 @@ def check_and_tweet_concerts():
 
         tweet_text = f"CONCERT ALERT INDIA 🎟️\n\n{title}\n\n🔗 Details: {link}\n\n#ConcertsIndia #LiveMusic #TicketsIndia #LiveShow #Concert"
         if len(tweet_text) > 280:
-            tweet_text = f"CONCERT ALERT INDIA 🎟️\n\n{title[:165]}\n\n🔗 Details: {link}\n\n#ConcertsIndia #LiveMusic #TicketsIndia #LiveShow #Concert"
+            tweet_text = f"CONCERT ALERT INDIA 🎟️\n\n{title[:150]}\n\n🔗 Details: {link}\n\n#ConcertsIndia #LiveMusic #TicketsIndia #LiveShow #Concert"
 
         print(f"\nPosting new concert alert:\n{tweet_text}")
 
         try:
-            response = client.create_tweet(text = tweet_text)
-            print(f"Tweet posted, Tweet ID: {response.data['id']}")
+            res = client.create_tweet(text = tweet_text)
+            print(f"Tweet posted, Tweet ID: {res.data['id']}")
             save_posted_id(entry_id)
         except tweepy.TweepyException as e:
             print(f"Failed to tweet: {e}")
