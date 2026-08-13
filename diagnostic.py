@@ -1,20 +1,9 @@
-import feedparser
-import requests
+import requests, feedparser
 
-RSS_URL = "https://www.google.com/alerts/feeds/14870177641225663263/4783581204708488671"
+url = "https://news.google.com/rss/search?q=concert+india+ticket&hl=en-IN&gl=IN&ceid=IN:en"
+res = requests.get(url, headers={"User-Agent": "Mozilla/5.0"})
+feed = feedparser.parse(res.text)
 
-headers = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-}
-
-print("Fetching raw feed with browser headers...")
-response = requests.get(RSS_URL, headers=headers)
-
-print(f"HTTP Status Code: {response.status_code}")
-
-feed = feedparser.parse(response.text)
 print(f"Total entries found: {len(feed.entries)}")
-
-for i, entry in enumerate(feed.entries, 1):
-    print(f"\n[{i}] {entry.get('title', 'No Title')}")
-    print(f"    Link: {entry.get('link', 'No Link')}")
+for entry in feed.entries[:3]:
+    print("-", entry.title)
