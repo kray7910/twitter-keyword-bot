@@ -2,5 +2,6 @@ tweepy
 json
 feedparser
 html
+re
 requests
 python-dotenv
