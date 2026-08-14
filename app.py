@@ -122,17 +122,28 @@ def check_and_tweet_concerts():
 
         raw_title = entry.title
         title = clean_html_tags(raw_title)
-        link = entry.link
+        clean_url = unwrap_google_link(entry.link)
 
-        tweet_text = f"CONCERT ALERT INDIA 🎟️\n\n{title}\n\n🔗 Details: {link}\n\n#ConcertsIndia #LiveMusic #TicketsIndia #LiveShow #Concert"
-        if len(tweet_text) > 280:
-            tweet_text = f"CONCERT ALERT INDIA 🎟️\n\n{title[:150]}\n\n🔗 Details: {link}\n\n#ConcertsIndia #LiveMusic #TicketsIndia #LiveShow #Concert"
+        hashtags = "#ConcertsIndia #LiveMusic #TicketsIndia #LiveShow #Viral"
+
+        #To calculate max title length, 23 is the length of short link
+        title_budget = 280-23-len(f"Concert Alert India\n\nDetails:\n\n{hashtags}")
+        formatted_title = truncate_title(title, max_len=title_budget)
+
+        tweet_text = (
+            f"Concert Alert India\n\n"
+            f"{formatted_title}\n\n"
+            f"Details: {clean_url}\n\n"
+            f"{hashtags}"
+        )
 
         print(f"\nPosting new concert alert:\n{tweet_text}")
 
         try:
             res = client.create_tweet(text = tweet_text)
             print(f"Tweet posted, Tweet ID: {res.data['id']}")
+            #Updating cache-in memory and write to disk
+            posted_ids.add(entry_id)
             save_posted_id(entry_id)
         except tweepy.TweepyException as e:
             print(f"Failed to tweet: {e}")
