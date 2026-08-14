@@ -69,6 +69,18 @@ def unwrap_google_link(url):
             return query["url"][0]
     return url
 
+'''Function to shorted headline title to fit in Twitter's character limit without simply
+cutting off words in the end randomly'''
+
+def truncate_title(title, max_len=150):
+    #Returns if lenght is lesser than the limit
+    if len(title) <= max_len:
+        return title
+    #First title is sliced from start to maxlen-3
+    #rspilt ensures that if length is exceeded then words at the end are not cut in half 
+    #awkwardly, it splits the title from the last space and gets rid of anything after the last space
+    return title[: max_len - 3].rsplit(" ",1)[0]+"..."
+
 
 '''Function to get the relevant data from RSS feed and crosscheck it with our cache file,
 if the ids do not match, then clean the data from its html tags and post a tweet'''
