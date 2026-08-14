@@ -3,6 +3,7 @@ import feedparser
 import json
 import tweepy
 import html
+import re
 import requests
 from dotenv import load_dotenv
 
@@ -52,7 +53,7 @@ def clean_html_tags(text):
     # Unescape HTML entities (&quot; -> ", &amp; -> &, etc.)
     cleaned = html.unescape(text)
     # Strip out bold highlight tags
-    return cleaned.replace("<b>", "").replace("</b>", "")
+    return 
 
 '''Function to get the relevant data from RSS feed and crosscheck it with our cache file,
 if the ids do not match, then clean the data from its html tags and post a tweet'''
