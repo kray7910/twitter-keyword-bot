@@ -5,6 +5,7 @@ import tweepy
 import html
 import re
 import requests
+from urllib.parse import parse_qs, urlparse
 from dotenv import load_dotenv
 
 
@@ -52,8 +53,22 @@ them'''
 def clean_html_tags(text):
     # Unescape HTML entities (&quot; -> ", &amp; -> &, etc.)
     cleaned = html.unescape(text)
-    # Strip out bold highlight tags
-    return 
+    # Strip out all kinds of tags, not just <b> and </b>
+    return re.sub(r"<[^>]+>", "", cleaned).strip()
+
+'''Function to parse and get direct url's if the url is a google redirect wrapper link
+if it is already a direct link (like bookmyshow.com etc) then simply return the url'''
+
+def unwrap_google_link(url):
+    parsed = urlparse(url)
+    #The parsed url contains netlock(the domain), path (endpoint path) and query
+    if "google.com" in parsed.netloc and "/url" in parsed.path:
+        #We parse the query to obtain the url
+        query = parse_qs(parsed.query)
+        if "url" in query:
+            return query["url"][0]
+    return url
+
 
 '''Function to get the relevant data from RSS feed and crosscheck it with our cache file,
 if the ids do not match, then clean the data from its html tags and post a tweet'''
