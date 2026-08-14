@@ -4,150 +4,224 @@ import json
 import tweepy
 import html
 import re
+import base64
 import requests
 from urllib.parse import parse_qs, urlparse
-from dotenv import load_dotenv
+from pathlib import Path
+from dotenv import load_dotenv, set_key
 
 
-load_dotenv()
+ENV_FILE = Path(__file__).resolve().parent / ".env"
+
+load_dotenv(ENV_FILE)
+
+def get_access_token():
+    def refresh_access_token():
+
+        client_id = os.getenv("CLIENT_ID")
+        client_secret = os.getenv("CLIENT_SECRET")
+        refresh_token = os.getenv("REFRESH_TOKEN")
+
+        if not client_id:
+            raise ValueError("CLIENT_ID is missing from .env")
+
+        if not client_secret:
+            raise ValueError("CLIENT_SECRET is missing from .env")
+
+        if not refresh_token:
+            raise ValueError("REFRESH_TOKEN is missing from .env")
+
+        response = requests.post(
+            "https://api.x.com/2/oauth2/token",
+            headers={
+                "Content-Type":
+                    "application/x-www-form-urlencoded",
+            },
+            auth=(
+                client_id,
+                client_secret
+            ),
+            data={
+                "refresh_token": refresh_token,
+                "grant_type": "refresh_token",
+            },
+            timeout=10
+        )
+
+        if response.status_code != 200:
+
+            print(
+                "OAuth token request failed."
+            )
+            print(
+                "Status:",
+                response.status_code
+            )
+            print(
+                "X response:",
+                response.text
+            )
+            response.raise_for_status()
+
+        token_data = response.json()
+        access_token = token_data["access_token"]
+
+        # X may rotate the refresh token.
+        new_refresh_token = token_data.get(
+            "refresh_token"
+        )
+        if new_refresh_token:
+            set_key(
+                str(ENV_FILE),
+                "REFRESH_TOKEN",
+                new_refresh_token
+            )
+            os.environ["REFRESH_TOKEN"] = new_refresh_token
+            print(
+                "New refresh token saved to .env"
+            )
+        return access_token
+    return refresh_access_token()
+
+access_token = get_access_token()
+print("OAuth authentication successful.")
 
 client = tweepy.Client(
-    bearer_token = os.getenv("bearer_token"),
-    consumer_key = os.getenv("api_key"),
-    consumer_secret = os.getenv("api_secret"),
-    access_token = os.getenv("access_token"),
-    access_token_secret = os.getenv("access_token_secret"),
-    wait_on_rate_limit = True
+    bearer_token=access_token,
+    wait_on_rate_limit=True
 )
 
 CACHE_FILE = "posted_cache.json"
 # Direct Google News RSS search for India concerts
-RSS_URL = "https://news.google.com/rss/search?q=concert+india+ticket&hl=en-IN&gl=IN&ceid=IN:en"
-
-'''To load previous tweet id's from local cache to prevent duplicates, after the script is run
-all the variables are erased from memmory and when run again, bot ends up fetching the same 
-rss items'''
-
-def load_posted_ids():
-    if os.path.exists(CACHE_FILE):
-        with open(CACHE_FILE, "r") as f:
-            try:
-                return set(json.load(f))
-            except json.JSONDecoder:
-                return set()
-    return set()
-
-'''To save newly tweeted ID into the cache file so that the bot dosent tweet the same thing
-again'''
-def save_posted_id(entry_id):
-    posted = load_posted_ids()
-    posted.add(entry_id)
-    with open(CACHE_FILE, "w") as f:
-        #json files cant serialize set directly, so we convert it to list, indent is just
-        #space between each entry
-        json.dump(list(posted),f,indent=2)
-
-'''The RSS feed generated highlights search terms inside titles using HTML tags like <b> and
-</b>, and converts special characters to html entities(&amp instead of just &), so we clean
-them'''
-def clean_html_tags(text):
-    # Unescape HTML entities (&quot; -> ", &amp; -> &, etc.)
-    cleaned = html.unescape(text)
-    # Strip out all kinds of tags, not just <b> and </b>
-    return re.sub(r"<[^>]+>", "", cleaned).strip()
-
-'''Function to parse and get direct url's if the url is a google redirect wrapper link
-if it is already a direct link (like bookmyshow.com etc) then simply return the url'''
-
-def unwrap_google_link(url):
-    parsed = urlparse(url)
-    #The parsed url contains netlock(the domain), path (endpoint path) and query
-    if "google.com" in parsed.netloc and "/url" in parsed.path:
-        #We parse the query to obtain the url
-        query = parse_qs(parsed.query)
-        if "url" in query:
-            return query["url"][0]
-    return url
-
-'''Function to shorted headline title to fit in Twitter's character limit without simply
-cutting off words in the end randomly'''
-
-def truncate_title(title, max_len=150):
-    #Returns if lenght is lesser than the limit
-    if len(title) <= max_len:
-        return title
-    #First title is sliced from start to maxlen-3
-    #rspilt ensures that if length is exceeded then words at the end are not cut in half 
-    #awkwardly, it splits the title from the last space and gets rid of anything after the last space
-    return title[: max_len - 3].rsplit(" ",1)[0]+"..."
-
-
-'''Function to get the relevant data from RSS feed and crosscheck it with our cache file,
-if the ids do not match, then clean the data from its html tags and post a tweet'''
-
-def check_and_tweet_concerts():
-    print("Fetching concert updates")
-
-    #To spoof browser User-Agent header, istead of the regular feedparser User-Agent header
-    #which may get blocked by google for each request
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    }
-
-    try:
-        response = requests.get(RSS_URL, headers = headers, timeout=10)
-        response.raise_for_status()
-        #Parses the XML data from RSS feed to python readable dictionaries and list format
-        feed = feedparser.parse(RSS_URL)
-    except requests.RequestException as e:
-        print(f"Failed to get RSS feed: {e}")
-        return
-
-
-    if getattr(feed, "bozo", 0) == 1:
-        print("Feed parsing error")
-
-    if not feed.entries:
-        print("No new updates found")
-        return
-
-    posted_ids = load_posted_ids()
-
-    for entry in feed.entries:
-        #Function to get some specific attribute, if the "id" section of our entry was empty
-        #then entry.link(article's web URL) is the fallback, rather than giving attribute error
-        entry_id = getattr(entry,"id",entry.link)
-        if entry_id in posted_ids:
-            continue
-
-        raw_title = entry.title
-        title = clean_html_tags(raw_title)
-        clean_url = unwrap_google_link(entry.link)
-
-        hashtags = "#ConcertsIndia #LiveMusic #TicketsIndia #LiveShow #Viral"
-
-        #To calculate max title length, 23 is the length of short link
-        title_budget = 280-23-len(f"Concert Alert India\n\nDetails:\n\n{hashtags}")
-        formatted_title = truncate_title(title, max_len=title_budget)
-
-        tweet_text = (
-            f"Concert Alert India\n\n"
-            f"{formatted_title}\n\n"
-            f"Details: {clean_url}\n\n"
-            f"{hashtags}"
-        )
-
-        print(f"\nPosting new concert alert:\n{tweet_text}")
-
-        try:
-            res = client.create_tweet(text = tweet_text)
-            print(f"Tweet posted, Tweet ID: {res.data['id']}")
-            #Updating cache-in memory and write to disk
-            posted_ids.add(entry_id)
-            save_posted_id(entry_id)
-        except tweepy.TweepyException as e:
-            print(f"Failed to tweet: {e}")
-            break
-
-if __name__ == "__main__":
+RSS_URL = "https://news.google.com/rss/search?q=concert+india+ticket&hl=en-IN&gl=IN&ceid=IN:en" 
+ 
+'''To load previous tweet id's from local cache to prevent duplicates, after the script is run 
+all the variables are erased from memmory and when run again, bot ends up fetching the same  
+rss items''' 
+ 
+def load_posted_ids(): 
+    if os.path.exists(CACHE_FILE): 
+        with open(CACHE_FILE, "r") as f: 
+            try: 
+                return set(json.load(f)) 
+            except json.JSONDecodeError: 
+                return set() 
+    return set() 
+ 
+'''To save newly tweeted ID into the cache file so that the bot dosent tweet the same thing 
+again''' 
+def save_posted_id(entry_id): 
+    posted = load_posted_ids() 
+    posted.add(entry_id) 
+    with open(CACHE_FILE, "w") as f: 
+        #json files cant serialize set directly, so we convert it to list, indent is just 
+        #space between each entry 
+        json.dump(list(posted),f,indent=2) 
+ 
+'''The RSS feed generated highlights search terms inside titles using HTML tags like <b> and 
+</b>, and converts special characters to html entities(&amp instead of just &), so we clean 
+them''' 
+def clean_html_tags(text): 
+    # Unescape HTML entities (&quot; -> ", &amp; -> &, etc.) 
+    cleaned = html.unescape(text) 
+    # Strip out all kinds of tags, not just <b> and </b> 
+    return re.sub(r"<[^>]+>", "", cleaned).strip() 
+ 
+'''Function to parse and get direct url's if the url is a google redirect wrapper link 
+if it is already a direct link (like bookmyshow.com etc) then simply return the url''' 
+ 
+def unwrap_google_link(url): 
+    parsed = urlparse(url) 
+    #The parsed url contains netlock(the domain), path (endpoint path) and query 
+    if "google.com" in parsed.netloc and "/url" in parsed.path: 
+        #We parse the query to obtain the url 
+        query = parse_qs(parsed.query) 
+        if "url" in query: 
+            return query["url"][0] 
+    return url 
+ 
+'''Function to shorted headline title to fit in Twitter's character limit without simply 
+cutting off words in the end randomly''' 
+ 
+def truncate_title(title, max_len=150): 
+    #Returns if lenght is lesser than the limit 
+    if len(title) <= max_len: 
+        return title 
+    #First title is sliced from start to maxlen-3 
+    #rspilt ensures that if length is exceeded then words at the end are not cut in half  
+    #awkwardly, it splits the title from the last space and gets rid of anything after the last space 
+    return title[: max_len - 3].rsplit(" ",1)[0]+"..." 
+ 
+ 
+'''Function to get the relevant data from RSS feed and crosscheck it with our cache file, 
+if the ids do not match, then clean the data from its html tags and post a tweet''' 
+ 
+def check_and_tweet_concerts(): 
+    print("Fetching concert updates") 
+ 
+    #To spoof browser User-Agent header, istead of the regular feedparser User-Agent header 
+    #which may get blocked by google for each request 
+    headers = { 
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" 
+    } 
+ 
+    try: 
+        response = requests.get(RSS_URL, headers = headers, timeout=10) 
+        response.raise_for_status() 
+        #Parses the XML data from RSS feed to python readable dictionaries and list format 
+        feed = feedparser.parse(response.content) 
+    except requests.RequestException as e: 
+        print(f"Failed to get RSS feed: {e}") 
+        return 
+ 
+ 
+    if getattr(feed, "bozo", 0) == 1: 
+        print("Feed parsing error") 
+ 
+    if not feed.entries: 
+        print("No new updates found") 
+        return 
+ 
+    posted_ids = load_posted_ids() 
+ 
+    for entry in feed.entries: 
+        #Function to get some specific attribute, if the "id" section of our entry was empty 
+        #then entry.link(article's web URL) is the fallback, rather than giving attribute error 
+        entry_id = getattr(entry,"id",entry.link) 
+        if entry_id in posted_ids: 
+            continue 
+ 
+        raw_title = entry.title 
+        title = clean_html_tags(raw_title) 
+        clean_url = unwrap_google_link(entry.link) 
+ 
+        hashtags = "#ConcertsIndia #LiveMusic #TicketsIndia #LiveShow #Viral" 
+ 
+        #To calculate max title length, 23 is the length of short link 
+        title_budget = 280-23-len(f"Concert Alert India\n\nDetails:\n\n{hashtags}") 
+        formatted_title = truncate_title(title, max_len=title_budget) 
+ 
+        tweet_text = ( 
+            f"Concert Alert India\n\n" 
+            f"{formatted_title}\n\n" 
+            f"Details: {clean_url}\n\n" 
+            f"{hashtags}" 
+        ) 
+ 
+        print(f"\nPosting new concert alert:\n{tweet_text}") 
+ 
+        try: 
+            res = client.create_tweet(
+                text=tweet_text,
+                user_auth = False
+            ) 
+            print(f"Tweet posted, Tweet ID: {res.data['id']}") 
+            #Updating cache-in memory and write to disk 
+            posted_ids.add(entry_id) 
+            save_posted_id(entry_id) 
+        except tweepy.TweepyException as e: 
+            print(f"Failed to tweet: {e}") 
+            break 
+ 
+if __name__ == "__main__": 
     check_and_tweet_concerts()
